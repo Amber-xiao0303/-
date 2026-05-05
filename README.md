@@ -151,5 +151,82 @@ save_path = os.path.join(desktop_path, "route_stops.png")
 plt.tight_layout()
 plt.savefig(save_path, dpi=150, bbox_inches='tight')
 plt.close()
-
 print("\n图表已保存")
+
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+file_path = os.path.join(desktop_path, "ICData.csv")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df = df[df["刷卡类型"] == 0].copy().reset_index(drop=True)  # 只算上车刷卡
+
+df['hour'] = df['交易时间'].dt.hour
+hour_count = df.groupby('hour').size()
+peak_hour = hour_count.idxmax()
+peak_volume = hour_count.max()
+
+print(f"高峰小时：{peak_hour:02d}:00 ~ {peak_hour+1:02d}:00，刷卡量：{peak_volume} 次")
+
+# 筛选高峰小时内的所有数据
+peak_hour_data = df[df['hour'] == peak_hour].copy()
+
+peak_hour_data['5min_bin'] = peak_hour_data['交易时间'].dt.floor('5min')
+max_5min = peak_hour_data.groupby('5min_bin').size().max()
+phf5 = peak_volume / (12 * max_5min)
+
+# 找到最大5分钟时间段
+max_5min_time = peak_hour_data.groupby('5min_bin').size().idxmax()
+max_5min_str = f"{max_5min_time.strftime('%H:%M')}~{(max_5min_time + pd.Timedelta(minutes=5)).strftime('%H:%M')}"
+
+print(f"最大5分钟刷卡量（{max_5min_str}）：{max_5min} 次")
+print(f"PHF5  = {peak_volume} / (12 × {max_5min}) = {phf5:.4f}")
+
+peak_hour_data['15min_bin'] = peak_hour_data['交易时间'].dt.floor('15min')
+max_15min = peak_hour_data.groupby('15min_bin').size().max()
+phf15 = peak_volume / (4 * max_15min)
+
+# 找到最大15分钟时间段
+max_15min_time = peak_hour_data.groupby('15min_bin').size().idxmax()
+max_15min_str = f"{max_15min_time.strftime('%H:%M')}~{(max_15min_time + pd.Timedelta(minutes=15)).strftime('%H:%M')}"
+
+print(f"最大15分钟刷卡量（{max_15min_str}）：{max_15min} 次")
+print(f"PHF15 = {peak_volume} / ( 4 × {max_15min}) = {phf15:.4f}")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
+df = df[df["ride_stops"] != 0].reset_index(drop=True)
+
+# 1. 筛选线路号在 1101 ~ 1120 之间的记录
+df_filtered = df[(df["线路号"] >= 1101) & (df["线路号"] <= 1120)].copy()
+
+# 2. 在程序根目录创建 线路驾驶员信息 文件夹
+root_dir = os.path.dirname(os.path.abspath(__file__))  # 程序根目录
+output_folder = os.path.join(root_dir, "线路驾驶员信息")
+os.makedirs(output_folder, exist_ok=True)
+
+# 3. 遍历每条线路，生成去重后的 车辆→驾驶员 文件
+unique_routes = sorted(df_filtered["线路号"].unique())
+
+for route in unique_routes:
+    # 筛选当前线路数据
+    route_data = df_filtered[df_filtered["线路号"] == route]
+
+    # 去重：保留唯一的 车辆编号 → 驾驶员编号 对应关系
+    driver_map = route_data[["车辆编号", "驾驶员编号"]].drop_duplicates().sort_values("车辆编号")
+
+    # 文件名：1101.txt
+    file_name = f"{route}.txt"
+    save_path = os.path.join(output_folder, file_name)
+
+    # 写入txt文件（严格按要求格式）
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(f"线路号: {route}\n")
+        f.write("车辆编号\t驾驶员编号\n")
+        for _, row in driver_map.iterrows():
+            f.write(f"{int(row['车辆编号'])}\t\t{int(row['驾驶员编号'])}\n")
+
+    # 4. 打印每个文件的生成路径
+    print(f"已生成：{save_path}")
+
+print("\n20条线路文件导出成功")
