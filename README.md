@@ -100,3 +100,56 @@ plt.savefig(save_path, dpi=150, bbox_inches="tight")
 plt.close()
 
 print("\n24小时分布图已保存")
+
+import seaborn as sns
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+file_path = os.path.join(desktop_path, "ICData.csv")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df["hour"] = df["交易时间"].dt.hour
+df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
+df = df[df["ride_stops"] != 0].reset_index(drop=True)
+
+def analyze_route_stops(df, route_col='线路号', stops_col='ride_stops'):
+    # 分组计算均值和标准差
+    result = df.groupby(route_col)[stops_col].agg(['mean', 'std']).reset_index()
+    result.columns = ['线路号', 'mean_stops', 'std_stops']
+    # 按均值降序排序
+    result = result.sort_values('mean_stops', ascending=False).reset_index(drop=True)
+    return result
+
+route_stats = analyze_route_stops(df)
+print("=" * 60)
+print("各线路平均搭乘站点数（前10行）")
+print("=" * 60)
+print(route_stats.head(10))
+
+plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei"]
+plt.rcParams["axes.unicode_minus"] = False
+
+# 取均值最高的前15条线路
+top15 = route_stats.head(15)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(
+    data=top15,
+    x='mean_stops',
+    y='线路号',
+    xerr='std_stops',  # 误差棒=标准差
+    capsize=0.3,       # 误差棒端点
+    palette='Blues_d'
+)
+
+# 图表样式
+plt.title('各线路平均搭乘站点数（Top15）', fontsize=14)
+plt.xlabel('平均搭乘站点数', fontsize=12)
+plt.ylabel('线路号', fontsize=12)
+plt.xlim(left=0)
+
+save_path = os.path.join(desktop_path, "route_stops.png")
+plt.tight_layout()
+plt.savefig(save_path, dpi=150, bbox_inches='tight')
+plt.close()
+
+print("\n图表已保存")
